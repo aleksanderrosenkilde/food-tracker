@@ -1,0 +1,17 @@
+services:
+  db:
+    image: postgres:16
+    container_name: foodtracker-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: food
+      POSTGRES_PASSWORD: foodpassword
+      POSTGRES_DB: foodtracker
+    ports:
+      - "5434:5432"
+    volumes:
+      - foodtracker_pg:/var/lib/postgresql/data
+
+volumes:
+  foodtracker_pg:
+
