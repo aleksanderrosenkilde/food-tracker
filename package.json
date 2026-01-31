@@ -3,13 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev:web": "next dev",
+    "dev:worker": "tsx watch scripts/worker.ts",
+    "dev": "concurrently -n web,worker \"npm run dev:web\" \"npm run dev:worker\"",
+    "dev:local": "cp .env.local .env && npm run dev",
+    "dev:prod": "cp .env.production .env && npm run dev:web",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.2",
+    "dotenv": "^17.2.3",
     "next": "16.1.4",
+    "pg-boss": "^12.5.4",
+    "prisma": "^6.19.2",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
@@ -18,8 +26,10 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
+    "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

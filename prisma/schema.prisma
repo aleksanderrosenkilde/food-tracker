@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model FoodItem {
+  id          String   @id @default(uuid())
+  name        String
+  normalized  String   @unique
+  kcal        Decimal
+  protein_g   Decimal
+  carbs_g     Decimal
+  fat_g       Decimal
+  fiber_g     Decimal?
+  source      String
+  confidence  Decimal?
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  logs         FoodLog[]
+  servingSizes ServingSize[]
+}
+
+model ServingSize {
+  id           String   @id @default(uuid())
+  food_item_id String
+  foodItem     FoodItem @relation(fields: [food_item_id], references: [id], onDelete: Cascade)
+
+  name         String   // e.g., "medium apple", "1 cup cooked", "1 slice"
+  grams        Decimal  // equivalent weight in grams
+  is_default   Boolean  @default(false) // one default serving per food item
+
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  @@index([food_item_id])
+  @@unique([food_item_id, name])
+}
+
+enum LogStatus {
+  ready
+  pending
+  error
+}
+
+model FoodLog {
+  id           String    @id @default(uuid())
+  food_item_id String?
+  foodItem     FoodItem? @relation(fields: [food_item_id], references: [id])
+
+  raw_text     String
+  amount       Decimal   @default(1)
+  serving_unit String?   // e.g., "medium apple", "cup", "grams", etc.
+  serving_grams Decimal? // actual grams consumed (calculated from serving size)
+  logged_at    DateTime  @default(now())
+  meal         String?
+
+  status       LogStatus @default(pending)
+  error_msg    String?
+
+  kcal         Decimal?
+  protein_g    Decimal?
+  carbs_g      Decimal?
+  fat_g        Decimal?
+  fiber_g      Decimal?
+
+  @@index([logged_at(sort: Desc)])
+  @@index([food_item_id])
+  @@index([status])
+}
