@@ -58,8 +58,8 @@ export async function POST(req: Request) {
       let servingGrams;
 
       // Try to match with a specific serving size
-      if (item.servingSizes && item.servingSizes.length > 0) {
-        const servingMatch = findMatchingServingSize(parsed, item.servingSizes);
+      if ((item as any).servingSizes && (item as any).servingSizes.length > 0) {
+        const servingMatch = findMatchingServingSize(parsed, (item as any).servingSizes);
 
         if (servingMatch) {
           nutrition = calculateNutrition(
