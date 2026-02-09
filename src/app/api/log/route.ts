@@ -10,8 +10,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseFoodInput } from "@/lib/foodParse";
 import { findBestFoodItem } from "@/lib/foodFind";
-import { getBoss } from "@/lib/boss";
-import { ensureWorkerStarted } from "@/lib/worker";
+import { enqueueEstimation } from "@/lib/estimationQueue";
 import { findMatchingServingSize, calculateNutrition } from "@/lib/servingSizes";
 
 function inferMeal(date: Date) {
@@ -139,7 +138,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // ⏳ CASE B: Not found → create pending log and enqueue background estimation
+    // ⏳ CASE B: Not found → create pending log, return instantly, estimate in background
     const log = await prisma.foodLog.create({
       data: {
         raw_text: rawText,
@@ -150,14 +149,8 @@ export async function POST(req: Request) {
       include: { foodItem: true },
     });
 
-    // Enqueue background job (fire-and-forget, FIFO)
-    const boss = await getBoss();
-    await boss.send("estimate-macros", { logId: log.id });
-
-    // Start in-process worker if not already running
-    ensureWorkerStarted().catch((err) =>
-      console.error("[worker startup error]", err)
-    );
+    // Fire-and-forget: enqueue FIFO estimation (does NOT block the response)
+    enqueueEstimation(log.id);
 
     return NextResponse.json({
       status: "pending",
