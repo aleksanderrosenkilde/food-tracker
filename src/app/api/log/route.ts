@@ -5,12 +5,11 @@
 // - If unknown: create a PENDING log immediately and enqueue a background job (pg-boss)
 //   to estimate macros and update the log later.
 
-import { NextResponse, after } from "next/server";
+import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
 import { parseFoodInput } from "@/lib/foodParse";
 import { findBestFoodItem } from "@/lib/foodFind";
-import { processEstimation } from "@/lib/estimationQueue";
 import { findMatchingServingSize, calculateNutrition } from "@/lib/servingSizes";
 
 function inferMeal(date: Date) {
@@ -149,9 +148,8 @@ export async function POST(req: Request) {
       include: { foodItem: true },
     });
 
-    // Run AI estimation AFTER the response is sent.
-    // On Vercel, after() keeps the serverless function alive until the promise resolves.
-    after(processEstimation(log.id));
+    // Estimation is triggered by the frontend via POST /api/log/:id/estimate
+    // This gives the AI call its own full serverless invocation timeout.
 
     return NextResponse.json({
       status: "pending",

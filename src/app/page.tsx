@@ -178,6 +178,9 @@ export default function Home() {
           ...q,
           { id: data.log.id, rawText: finalText, status: "pending" },
         ]);
+        // Trigger estimation in a separate serverless invocation (fire-and-forget)
+        fetch(`/api/log/${data.log.id}/estimate`, { method: "POST" }).catch(() => {});
+        // Start polling for result
         pollLog(data.log.id);
       }
 
