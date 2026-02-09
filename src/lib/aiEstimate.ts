@@ -142,7 +142,7 @@ Food: ${foodText}`;
       temperature: 0.2,
       max_tokens: 1000,
       provider: {
-        data_collection: "deny",
+        data_collection: "allow",
       },
     }),
   });
