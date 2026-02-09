@@ -114,10 +114,70 @@ Food: ${foodText}`;
   }
 }
 
+async function estimateWithOpenRouter(foodText: string): Promise<MacroEstimate> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENROUTER_API_KEY not configured");
+  }
+
+  const model = process.env.OPENROUTER_MODEL ?? "tngtech/deepseek-r1t2-chimera";
+
+  const prompt = `Estimate nutrition for this food. Return ONLY JSON matching this schema:
+${JSON.stringify(schema)}
+
+Important: If the text specifies a weight (like "200g chicken"), provide nutrition for that exact amount, not per 100g.
+Do NOT include any thinking tags or reasoning. Return ONLY the JSON object.
+
+Food: ${foodText}`;
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.2,
+      max_tokens: 1000,
+    }),
+  });
+
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(`OpenRouter error ${res.status}: ${error}`);
+  }
+
+  const data = await res.json();
+  const content = data.choices?.[0]?.message?.content?.trim();
+
+  if (!content) {
+    throw new Error("OpenRouter returned empty response");
+  }
+
+  // R1-based models may wrap output in <think>...</think> tags; strip them
+  const cleaned = content.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+
+  // Extract JSON from the response (may be wrapped in markdown code fences)
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error(`OpenRouter returned non-JSON: ${cleaned}`);
+  }
+
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch {
+    throw new Error(`OpenRouter returned invalid JSON: ${jsonMatch[0]}`);
+  }
+}
+
 export async function estimateMacrosFromText(foodText: string): Promise<MacroEstimate> {
   const provider = process.env.AI_PROVIDER || "ollama";
 
-  if (provider === "openai") {
+  if (provider === "openrouter") {
+    return estimateWithOpenRouter(foodText);
+  } else if (provider === "openai") {
     return estimateWithOpenAI(foodText);
   } else {
     return estimateWithOllama(foodText);
