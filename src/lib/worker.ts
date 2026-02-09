@@ -31,39 +31,63 @@ export async function ensureWorkerStarted() {
       if (!item) {
         const est = await estimateMacrosFromText(log.raw_text);
 
+        // Normalize AI estimate to per-100g basis if user specified weight
+        let normalized = est;
+        if (parsed.grams && parsed.grams !== 100) {
+          const factor = 100 / parsed.grams;
+          normalized = {
+            ...est,
+            kcal: est.kcal * factor,
+            protein_g: est.protein_g * factor,
+            carbs_g: est.carbs_g * factor,
+            fat_g: est.fat_g * factor,
+            fiber_g: est.fiber_g ? est.fiber_g * factor : null,
+          };
+        }
+
         item = await prisma.foodItem.upsert({
           where: { normalized: parsed.normalized },
           update: {
-            name: est.name || parsed.cleanedText || log.raw_text,
-            kcal: est.kcal,
-            protein_g: est.protein_g,
-            carbs_g: est.carbs_g,
-            fat_g: est.fat_g,
-            fiber_g: est.fiber_g ?? null,
+            name: normalized.name || parsed.cleanedText || log.raw_text,
+            kcal: normalized.kcal,
+            protein_g: normalized.protein_g,
+            carbs_g: normalized.carbs_g,
+            fat_g: normalized.fat_g,
+            fiber_g: normalized.fiber_g ?? null,
             source: "ai",
-            confidence: est.confidence ?? null,
+            confidence: normalized.confidence ?? null,
           },
           create: {
-            name: est.name || parsed.cleanedText || log.raw_text,
+            name: normalized.name || parsed.cleanedText || log.raw_text,
             normalized: parsed.normalized,
-            kcal: est.kcal,
-            protein_g: est.protein_g,
-            carbs_g: est.carbs_g,
-            fat_g: est.fat_g,
-            fiber_g: est.fiber_g ?? null,
+            kcal: normalized.kcal,
+            protein_g: normalized.protein_g,
+            carbs_g: normalized.carbs_g,
+            fat_g: normalized.fat_g,
+            fiber_g: normalized.fiber_g ?? null,
             source: "ai",
-            confidence: est.confidence ?? null,
+            confidence: normalized.confidence ?? null,
           },
         });
       }
 
+      // Calculate nutrition for the log based on actual serving
       const amount = Number(log.amount);
+      let multiplier = amount;
+      let servingUnit = "serving";
+      let servingGrams: number | undefined;
 
-      const kcal = Number(item.kcal) * amount;
-      const protein_g = Number(item.protein_g) * amount;
-      const carbs_g = Number(item.carbs_g) * amount;
-      const fat_g = Number(item.fat_g) * amount;
-      const fiber_g = item.fiber_g ? Number(item.fiber_g) * amount : null;
+      if (parsed.grams) {
+        multiplier = parsed.grams / 100; // FoodItem stores per-100g
+        servingGrams = parsed.grams;
+        servingUnit = `${parsed.grams}g`;
+      }
+
+      const kcal = Number(item.kcal) * multiplier;
+      const protein_g = Number(item.protein_g) * multiplier;
+      const carbs_g = Number(item.carbs_g) * multiplier;
+      const fat_g = Number(item.fat_g) * multiplier;
+      const fiber_g = item.fiber_g ? Number(item.fiber_g) * multiplier : null;
 
       await prisma.foodLog.update({
         where: { id: logId },
@@ -71,6 +95,8 @@ export async function ensureWorkerStarted() {
           status: "ready",
           error_msg: null,
           food_item_id: item.id,
+          serving_unit: servingUnit,
+          serving_grams: servingGrams,
           kcal,
           protein_g,
           carbs_g,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
 type FoodLog = {
   id: string;
@@ -10,6 +10,7 @@ type FoodLog = {
   carbs_g?: string;
   fat_g?: string;
   error_msg?: string;
+  raw_text?: string;
   foodItem?: {
     name: string;
   };
@@ -32,6 +33,15 @@ type Suggestion = {
   servingSizes?: ServingSize[];
 };
 
+type PendingItem = {
+  id: string;
+  rawText: string;
+  status: "pending" | "ready" | "error";
+  kcal?: number;
+  name?: string;
+  errorMsg?: string;
+};
+
 export default function Home() {
   const [text, setText] = useState("");
   const [amount, setAmount] = useState(1);
@@ -39,8 +49,10 @@ export default function Home() {
   const [selectedSuggestion, setSelectedSuggestion] = useState<Suggestion | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [pendingQueue, setPendingQueue] = useState<PendingItem[]>([]);
 
   const abortRef = useRef<AbortController | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   // -------------------------------------------------------
   // Suggestions dropdown
@@ -70,25 +82,46 @@ export default function Home() {
   }, [text]);
 
   // -------------------------------------------------------
-  // Poll background estimation
+  // Poll background estimation (updates pending queue)
   // -------------------------------------------------------
-  async function pollLog(id: string) {
+  const pollLog = useCallback(async (id: string) => {
     try {
       const res = await fetch(`/api/log/${id}`);
       const data = await res.json();
       const log: FoodLog = data.log;
 
       if (log.status === "ready") {
-        setMessage(
-          `Updated: ${Math.round(Number(log.kcal))} kcal — ${log.foodItem?.name ?? ""}`
+        setPendingQueue((q) =>
+          q.map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  status: "ready" as const,
+                  kcal: Math.round(Number(log.kcal)),
+                  name: log.foodItem?.name ?? item.rawText,
+                }
+              : item
+          )
         );
-        setBusy(false);
+        // Auto-remove after 3 seconds
+        setTimeout(() => {
+          setPendingQueue((q) => q.filter((item) => item.id !== id));
+        }, 3000);
         return;
       }
 
       if (log.status === "error") {
-        setMessage(`Estimation failed: ${log.error_msg}`);
-        setBusy(false);
+        setPendingQueue((q) =>
+          q.map((item) =>
+            item.id === id
+              ? { ...item, status: "error" as const, errorMsg: log.error_msg }
+              : item
+          )
+        );
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+          setPendingQueue((q) => q.filter((item) => item.id !== id));
+        }, 5000);
         return;
       }
 
@@ -96,7 +129,7 @@ export default function Home() {
     } catch {
       setTimeout(() => pollLog(id), 1000);
     }
-  }
+  }, []);
 
   // -------------------------------------------------------
   // Submit food
@@ -136,18 +169,25 @@ export default function Home() {
         setMessage(
           `Logged: ${Math.round(Number(data.log.kcal))} kcal — ${data.log.foodItem?.name ?? ""}${servingInfo}`
         );
-        setBusy(false);
       }
 
-      // Unknown food → background
+      // Unknown food → enqueued, unblock immediately
       if (data.status === "pending") {
-        setMessage("Logged ✓ Estimating macros…");
+        setMessage("Logged ✓");
+        setPendingQueue((q) => [
+          ...q,
+          { id: data.log.id, rawText: finalText, status: "pending" },
+        ]);
         pollLog(data.log.id);
       }
 
+      // Always unblock input immediately
+      setBusy(false);
       setText("");
       setSuggestions([]);
       setSelectedSuggestion(null);
+      // Re-focus input for rapid logging
+      setTimeout(() => inputRef.current?.focus(), 0);
     } catch (e: any) {
       setMessage(e.message || "Error");
       setBusy(false);
@@ -160,6 +200,7 @@ export default function Home() {
 
       <div style={{ display: "flex", gap: 8 }}>
         <input
+          ref={inputRef}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
@@ -267,6 +308,66 @@ export default function Home() {
       )}
 
       <div style={{ marginTop: 14, minHeight: 28 }}>{message}</div>
+
+      {/* Pending estimation queue */}
+      {pendingQueue.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          {pendingQueue.map((item) => (
+            <div
+              key={item.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "8px 12px",
+                marginBottom: 6,
+                borderRadius: 8,
+                fontSize: 14,
+                background:
+                  item.status === "ready"
+                    ? "#f0fdf0"
+                    : item.status === "error"
+                    ? "#fef2f2"
+                    : "#f8f8f8",
+                border: `1px solid ${
+                  item.status === "ready"
+                    ? "#bbf7d0"
+                    : item.status === "error"
+                    ? "#fecaca"
+                    : "#e5e5e5"
+                }`,
+                transition: "all 0.3s ease",
+              }}
+            >
+              {item.status === "pending" && (
+                <span
+                  style={{
+                    display: "inline-block",
+                    width: 14,
+                    height: 14,
+                    border: "2px solid #ddd",
+                    borderTopColor: "#666",
+                    borderRadius: "50%",
+                    animation: "spin 0.8s linear infinite",
+                  }}
+                />
+              )}
+              {item.status === "ready" && <span>✓</span>}
+              {item.status === "error" && <span>✗</span>}
+              <span style={{ flex: 1 }}>{item.rawText}</span>
+              <span style={{ opacity: 0.6 }}>
+                {item.status === "pending" && "estimating…"}
+                {item.status === "ready" &&
+                  `${item.kcal} kcal — ${item.name ?? ""}`}
+                {item.status === "error" &&
+                  (item.errorMsg ?? "estimation failed")}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </main>
   );
 }
