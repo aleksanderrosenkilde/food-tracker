@@ -1,39 +1,14 @@
-// In-memory FIFO queue for background AI estimation.
-// Jobs are processed one at a time in order. The queue survives across
-// requests within the same server process but is lost on restart —
-// that's fine because pending logs are picked up by the recovery sweep.
+// Background AI estimation processor.
+// Called via Next.js after() to run after the response is sent.
+// On Vercel, after() keeps the serverless function alive until the promise resolves.
 
 import { prisma } from "@/lib/prisma";
 import { estimateMacrosFromText } from "@/lib/aiEstimate";
 import { parseFoodInput } from "@/lib/foodParse";
 import { findBestFoodItem } from "@/lib/foodFind";
 
-const queue: string[] = [];
-let processing = false;
-
-/** Add a logId to the FIFO queue (non-blocking, returns immediately). */
-export function enqueueEstimation(logId: string) {
-  queue.push(logId);
-  drainQueue();
-}
-
-async function drainQueue() {
-  if (processing) return; // another loop is already running
-  processing = true;
-
-  while (queue.length > 0) {
-    const logId = queue.shift()!;
-    try {
-      await processEstimation(logId);
-    } catch (err) {
-      console.error(`[estimation-queue] failed for ${logId}:`, err);
-    }
-  }
-
-  processing = false;
-}
-
-async function processEstimation(logId: string) {
+/** Process a single pending estimation. Safe to call fire-and-forget via after(). */
+export async function processEstimation(logId: string) {
   const log = await prisma.foodLog.findUnique({ where: { id: logId } });
   if (!log) return;
   if ((log as any).status === "ready") return; // already resolved
@@ -122,7 +97,7 @@ async function processEstimation(logId: string) {
       } as any,
     });
 
-    console.log(`[estimation-queue] ✓ ${logId} → ${item.name} (${Math.round(kcal)} kcal)`);
+    console.log(`[estimation] ✓ ${logId} → ${item.name} (${Math.round(kcal)} kcal)`);
   } catch (e: any) {
     await prisma.foodLog.update({
       where: { id: logId },
@@ -131,6 +106,6 @@ async function processEstimation(logId: string) {
         error_msg: e?.message ?? "Estimation failed",
       } as any,
     });
-    console.error(`[estimation-queue] ✗ ${logId}:`, e?.message);
+    console.error(`[estimation] ✗ ${logId}:`, e?.message);
   }
 }
