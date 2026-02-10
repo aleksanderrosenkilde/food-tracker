@@ -127,7 +127,7 @@ async function estimateWithOpenRouter(foodText: string): Promise<EstimationResul
     throw new Error("OPENROUTER_API_KEY not configured");
   }
 
-  const model = process.env.OPENROUTER_MODEL ?? "tngtech/deepseek-r1t2-chimera";
+  const model = process.env.OPENROUTER_MODEL ?? "google/gemma-3-27b-it:free";
 
   const prompt = `Estimate nutrition for this food. Return ONLY JSON matching this schema:
 ${JSON.stringify(schema)}
