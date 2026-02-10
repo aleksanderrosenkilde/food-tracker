@@ -42,6 +42,17 @@ type PendingItem = {
   errorMsg?: string;
 };
 
+type DailyLog = {
+  id: string;
+  raw_text: string;
+  meal: string | null;
+  kcal: string | null;
+  protein_g: string | null;
+  carbs_g: string | null;
+  fat_g: string | null;
+  foodItem?: { name: string } | null;
+};
+
 export default function Home() {
   const [text, setText] = useState("");
   const [amount, setAmount] = useState(1);
@@ -50,9 +61,26 @@ export default function Home() {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [pendingQueue, setPendingQueue] = useState<PendingItem[]>([]);
+  const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
 
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // -------------------------------------------------------
+  // Fetch today's logs
+  // -------------------------------------------------------
+  const fetchDailyLogs = useCallback(async () => {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const res = await fetch(`/api/logs/today?tz=${encodeURIComponent(tz)}`);
+      const data = await res.json();
+      setDailyLogs(data.logs || []);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchDailyLogs();
+  }, [fetchDailyLogs]);
 
   // -------------------------------------------------------
   // Suggestions dropdown
@@ -103,6 +131,7 @@ export default function Home() {
               : item
           )
         );
+        fetchDailyLogs();
         // Auto-remove after 3 seconds
         setTimeout(() => {
           setPendingQueue((q) => q.filter((item) => item.id !== id));
@@ -129,77 +158,114 @@ export default function Home() {
     } catch {
       setTimeout(() => pollLog(id), 1000);
     }
-  }, []);
+  }, [fetchDailyLogs]);
 
   // -------------------------------------------------------
-  // Submit food
+  // Submit food (supports comma-separated multi-food)
   // -------------------------------------------------------
   async function submit(customText?: string, servingSize?: ServingSize) {
     const payloadText = (customText ?? text).trim();
     if (!payloadText) return;
 
-    setBusy(true);
-    setMessage("Logging…");
+    // Determine items to log
+    // Only split by comma for free-form text input (not suggestion clicks)
+    const items: Array<{ text: string; servingSize?: ServingSize }> = [];
 
-    // Build the final text with serving size if specified
-    let finalText = payloadText;
-    if (servingSize) {
-      finalText = `${amount} ${servingSize.name} ${payloadText}`;
+    if (!customText && !servingSize && payloadText.includes(",")) {
+      const parts = payloadText.split(",").map((s) => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        items.push({ text: part });
+      }
+    } else {
+      items.push({ text: payloadText, servingSize });
     }
 
+    setBusy(true);
+    setMessage(items.length > 1 ? `Logging ${items.length} items…` : "Logging…");
+
+    // Clear input immediately for rapid logging
+    setText("");
+    setSuggestions([]);
+    setSelectedSuggestion(null);
+
     try {
-      const res = await fetch("/api/log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: finalText,
-          amount,
-        }),
-      });
+      let readyCount = 0;
+      let pendingCount = 0;
 
-      const data = await res.json();
+      for (const item of items) {
+        let finalText = item.text;
+        if (item.servingSize) {
+          finalText = `${amount} ${item.servingSize.name} ${item.text}`;
+        }
 
-      if (!res.ok) throw new Error(data?.error || "Failed");
+        const res = await fetch("/api/log", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: finalText,
+            amount: item.servingSize ? amount : undefined,
+          }),
+        });
 
-      // Known food → instant
-      if (data.status === "ready") {
-        const servingInfo = data.servingUsed && data.servingUsed !== "serving"
-          ? ` (${data.servingUsed})`
-          : "";
-        setMessage(
-          `Logged: ${Math.round(Number(data.log.kcal))} kcal — ${data.log.foodItem?.name ?? ""}${servingInfo}`
-        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || "Failed");
+
+        if (data.status === "ready") {
+          readyCount++;
+          if (items.length === 1) {
+            const servingInfo =
+              data.servingUsed && data.servingUsed !== "serving"
+                ? ` (${data.servingUsed})`
+                : "";
+            setMessage(
+              `Logged: ${Math.round(Number(data.log.kcal))} kcal — ${data.log.foodItem?.name ?? ""}${servingInfo}`
+            );
+          }
+          fetchDailyLogs();
+        }
+
+        if (data.status === "pending") {
+          pendingCount++;
+          setPendingQueue((q) => [
+            ...q,
+            { id: data.log.id, rawText: finalText, status: "pending" },
+          ]);
+          fetch(`/api/log/${data.log.id}/estimate`, { method: "POST" }).catch(
+            () => {}
+          );
+          pollLog(data.log.id);
+        }
       }
 
-      // Unknown food → enqueued, unblock immediately
-      if (data.status === "pending") {
+      if (items.length > 1) {
+        setMessage(`Logged ${readyCount + pendingCount} items${pendingCount > 0 ? ` (${pendingCount} estimating)` : ""}`);
+      } else if (pendingCount > 0 && items.length === 1) {
         setMessage("Logged ✓");
-        setPendingQueue((q) => [
-          ...q,
-          { id: data.log.id, rawText: finalText, status: "pending" },
-        ]);
-        // Trigger estimation in a separate serverless invocation (fire-and-forget)
-        fetch(`/api/log/${data.log.id}/estimate`, { method: "POST" }).catch(() => {});
-        // Start polling for result
-        pollLog(data.log.id);
       }
-
-      // Always unblock input immediately
-      setBusy(false);
-      setText("");
-      setSuggestions([]);
-      setSelectedSuggestion(null);
-      // Re-focus input for rapid logging
-      setTimeout(() => inputRef.current?.focus(), 0);
     } catch (e: any) {
       setMessage(e.message || "Error");
+    } finally {
       setBusy(false);
+      setTimeout(() => inputRef.current?.focus(), 0);
     }
   }
 
+  // -------------------------------------------------------
+  // Computed daily totals
+  // -------------------------------------------------------
+  const totals = dailyLogs.reduce(
+    (acc, log) => ({
+      kcal: acc.kcal + Number(log.kcal || 0),
+      protein: acc.protein + Number(log.protein_g || 0),
+      carbs: acc.carbs + Number(log.carbs_g || 0),
+      fat: acc.fat + Number(log.fat_g || 0),
+    }),
+    { kcal: 0, protein: 0, carbs: 0, fat: 0 }
+  );
+
   return (
     <main style={{ maxWidth: 720, margin: "40px auto", padding: 16 }}>
-      <h1 style={{ fontSize: 28, marginBottom: 16 }}>Food tracker</h1>
+      <h1 style={{ fontSize: 28, marginBottom: 16, color: "#333" }}>Food tracker</h1>
 
       <div style={{ display: "flex", gap: 8 }}>
         <input
@@ -207,13 +273,14 @@ export default function Home() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
-          placeholder="What did you eat? (e.g., '1 medium apple', '200g chicken', '2 cups rice')"
+          placeholder="What did you eat? (e.g., 'apple, banana, 200g chicken')"
           style={{
             flex: 1,
             padding: 14,
             fontSize: 18,
             borderRadius: 12,
             border: "1px solid #ddd",
+            color: "#333",
           }}
           disabled={busy}
           autoFocus
@@ -231,6 +298,7 @@ export default function Home() {
             fontSize: 18,
             borderRadius: 12,
             border: "1px solid #ddd",
+            color: "#333",
           }}
         />
       </div>
@@ -255,6 +323,7 @@ export default function Home() {
                   border: "none",
                   background: selectedSuggestion?.id === s.id ? "#f8f8f8" : "white",
                   cursor: "pointer",
+                  color: "#333",
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -292,6 +361,7 @@ export default function Home() {
                         background: "white",
                         cursor: "pointer",
                         fontSize: 13,
+                        color: "#333",
                       }}
                     >
                       <div style={{ fontWeight: serving.is_default ? "bold" : "normal" }}>
@@ -310,7 +380,7 @@ export default function Home() {
         </div>
       )}
 
-      <div style={{ marginTop: 14, minHeight: 28 }}>{message}</div>
+      <div style={{ marginTop: 14, minHeight: 28, color: "#333" }}>{message}</div>
 
       {/* Pending estimation queue */}
       {pendingQueue.length > 0 && (
@@ -326,6 +396,7 @@ export default function Home() {
                 marginBottom: 6,
                 borderRadius: 8,
                 fontSize: 14,
+                color: "#333",
                 background:
                   item.status === "ready"
                     ? "#f0fdf0"
@@ -367,6 +438,64 @@ export default function Home() {
               </span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Daily macros summary table */}
+      {dailyLogs.length > 0 && (
+        <div style={{ marginTop: 32 }}>
+          <h2 style={{ fontSize: 20, marginBottom: 12, color: "#333" }}>Today</h2>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid #ddd", textAlign: "left" }}>
+                  <th style={{ padding: "8px 4px", color: "#333" }}>Food</th>
+                  <th style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>Kcal</th>
+                  <th style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>Protein</th>
+                  <th style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>Carbs</th>
+                  <th style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>Fat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyLogs.map((log) => (
+                  <tr key={log.id} style={{ borderBottom: "1px solid #f2f2f2" }}>
+                    <td style={{ padding: "8px 4px", color: "#333" }}>
+                      {log.foodItem?.name ?? log.raw_text}
+                    </td>
+                    <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                      {log.kcal ? Math.round(Number(log.kcal)) : "—"}
+                    </td>
+                    <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                      {log.protein_g ? `${Math.round(Number(log.protein_g))}g` : "—"}
+                    </td>
+                    <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                      {log.carbs_g ? `${Math.round(Number(log.carbs_g))}g` : "—"}
+                    </td>
+                    <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                      {log.fat_g ? `${Math.round(Number(log.fat_g))}g` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ borderTop: "2px solid #ddd", fontWeight: "bold" }}>
+                  <td style={{ padding: "8px 4px", color: "#333" }}>Total</td>
+                  <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                    {Math.round(totals.kcal)}
+                  </td>
+                  <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                    {Math.round(totals.protein)}g
+                  </td>
+                  <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                    {Math.round(totals.carbs)}g
+                  </td>
+                  <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                    {Math.round(totals.fat)}g
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
       )}
 

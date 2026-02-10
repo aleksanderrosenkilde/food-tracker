@@ -9,6 +9,12 @@ export type MacroEstimate = {
   assumptions?: string | null;
 };
 
+export type EstimationResult = {
+  estimate: MacroEstimate;
+  ai_model: string;
+  ai_prompt: string;
+};
+
 const schema = {
   type: "object",
   additionalProperties: false,
@@ -25,7 +31,7 @@ const schema = {
   required: ["name", "kcal", "protein_g", "carbs_g", "fat_g", "fiber_g", "confidence", "assumptions"],
 } as const;
 
-async function estimateWithOllama(foodText: string): Promise<MacroEstimate> {
+async function estimateWithOllama(foodText: string): Promise<EstimationResult> {
   const model = process.env.LOCAL_LLM_MODEL ?? "llama3.2:3b";
   const url = process.env.OLLAMA_URL ?? "http://127.0.0.1:11434/api/generate";
 
@@ -62,18 +68,19 @@ async function estimateWithOllama(foodText: string): Promise<MacroEstimate> {
   if (!text) throw new Error("Ollama returned empty response");
 
   try {
-    return JSON.parse(text);
+    return { estimate: JSON.parse(text), ai_model: model, ai_prompt: prompt };
   } catch {
     throw new Error(`Ollama returned non-JSON: ${text}`);
   }
 }
 
-async function estimateWithOpenAI(foodText: string): Promise<MacroEstimate> {
+async function estimateWithOpenAI(foodText: string): Promise<EstimationResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY not configured");
   }
 
+  const model = "gpt-3.5-turbo";
   const prompt = `Estimate nutrition for this food. Return ONLY JSON matching this schema:
 ${JSON.stringify(schema)}
 
@@ -88,7 +95,7 @@ Food: ${foodText}`;
       "Authorization": `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-3.5-turbo",
+      model,
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
       max_tokens: 300,
@@ -108,13 +115,13 @@ Food: ${foodText}`;
   }
 
   try {
-    return JSON.parse(content);
+    return { estimate: JSON.parse(content), ai_model: model, ai_prompt: prompt };
   } catch {
     throw new Error(`OpenAI returned non-JSON: ${content}`);
   }
 }
 
-async function estimateWithOpenRouter(foodText: string): Promise<MacroEstimate> {
+async function estimateWithOpenRouter(foodText: string): Promise<EstimationResult> {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     throw new Error("OPENROUTER_API_KEY not configured");
@@ -169,13 +176,13 @@ Food: ${foodText}`;
   }
 
   try {
-    return JSON.parse(jsonMatch[0]);
+    return { estimate: JSON.parse(jsonMatch[0]), ai_model: model, ai_prompt: prompt };
   } catch {
     throw new Error(`OpenRouter returned invalid JSON: ${jsonMatch[0]}`);
   }
 }
 
-export async function estimateMacrosFromText(foodText: string): Promise<MacroEstimate> {
+export async function estimateMacrosFromText(foodText: string): Promise<EstimationResult> {
   const provider = process.env.AI_PROVIDER || "ollama";
 
   if (provider === "openrouter") {

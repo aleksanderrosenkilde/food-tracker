@@ -18,6 +18,8 @@ model FoodItem {
   fiber_g     Decimal?
   source      String
   confidence  Decimal?
+  ai_model    String?
+  ai_prompt   String?
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 

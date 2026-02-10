@@ -49,7 +49,7 @@ async function processOne(job: AnyJob) {
     let item = match.item;
 
     if (!item) {
-      const est = await estimateMacrosFromText(log.raw_text);
+      const { estimate: est, ai_model, ai_prompt } = await estimateMacrosFromText(log.raw_text);
 
       // Normalize to per-100g basis if user specified weight
       let normalizedEst = est;
@@ -76,6 +76,8 @@ async function processOne(job: AnyJob) {
           fiber_g: normalizedEst.fiber_g ?? null,
           source: "ai",
           confidence: normalizedEst.confidence ?? null,
+          ai_model,
+          ai_prompt,
         },
         create: {
           name: normalizedEst.name || parsed.cleanedText || log.raw_text,
@@ -87,6 +89,8 @@ async function processOne(job: AnyJob) {
           fiber_g: normalizedEst.fiber_g ?? null,
           source: "ai",
           confidence: normalizedEst.confidence ?? null,
+          ai_model,
+          ai_prompt,
         },
       });
     }
