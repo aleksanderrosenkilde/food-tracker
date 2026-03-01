@@ -132,7 +132,6 @@ export default function Home() {
           )
         );
         fetchDailyLogs();
-        // Auto-remove after 3 seconds
         setTimeout(() => {
           setPendingQueue((q) => q.filter((item) => item.id !== id));
         }, 3000);
@@ -147,7 +146,6 @@ export default function Home() {
               : item
           )
         );
-        // Auto-remove after 5 seconds
         setTimeout(() => {
           setPendingQueue((q) => q.filter((item) => item.id !== id));
         }, 5000);
@@ -167,8 +165,6 @@ export default function Home() {
     const payloadText = (customText ?? text).trim();
     if (!payloadText) return;
 
-    // Determine items to log
-    // Only split by comma for free-form text input (not suggestion clicks)
     const items: Array<{ text: string; servingSize?: ServingSize }> = [];
 
     if (!customText && !servingSize && payloadText.includes(",")) {
@@ -183,7 +179,6 @@ export default function Home() {
     setBusy(true);
     setMessage(items.length > 1 ? `Logging ${items.length} items…` : "Logging…");
 
-    // Clear input immediately for rapid logging
     setText("");
     setSuggestions([]);
     setSelectedSuggestion(null);
@@ -264,10 +259,26 @@ export default function Home() {
   );
 
   return (
-    <main style={{ maxWidth: 720, margin: "40px auto", padding: 16 }}>
-      <h1 style={{ fontSize: 28, marginBottom: 16, color: "#333" }}>Food tracker</h1>
+    <main style={{
+      maxWidth: 640,
+      margin: "0 auto",
+      padding: "48px 20px 80px",
+      minHeight: "100vh",
+    }}>
+      <h1 style={{
+        fontSize: 24,
+        fontWeight: 700,
+        letterSpacing: "-0.03em",
+        marginBottom: 32,
+        color: "var(--text-primary)",
+      }}>Food tracker</h1>
 
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{
+        display: "flex",
+        gap: 10,
+        position: "relative",
+        flexWrap: "wrap" as const,
+      }}>
         <input
           ref={inputRef}
           value={text}
@@ -276,11 +287,16 @@ export default function Home() {
           placeholder="What did you eat? (e.g., 'apple, banana, 200g chicken')"
           style={{
             flex: 1,
-            padding: 14,
-            fontSize: 18,
-            borderRadius: 12,
-            border: "1px solid #ddd",
-            color: "#333",
+            minWidth: 0,
+            padding: "12px 16px",
+            fontSize: 15,
+            lineHeight: "20px",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--border)",
+            backgroundColor: "var(--surface)",
+            color: "var(--text-primary)",
+            transition: "border-color 0.15s ease, box-shadow 0.15s ease",
+            boxShadow: "var(--shadow-sm)",
           }}
           disabled={busy}
           autoFocus
@@ -293,20 +309,34 @@ export default function Home() {
           value={amount}
           onChange={(e) => setAmount(Number(e.target.value))}
           style={{
-            width: 110,
-            padding: 14,
-            fontSize: 18,
-            borderRadius: 12,
-            border: "1px solid #ddd",
-            color: "#333",
+            width: 90,
+            minWidth: 90,
+            padding: "12px 12px",
+            fontSize: 15,
+            lineHeight: "20px",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--border)",
+            backgroundColor: "var(--surface)",
+            color: "var(--text-primary)",
+            transition: "border-color 0.15s ease, box-shadow 0.15s ease",
+            boxShadow: "var(--shadow-sm)",
+            textAlign: "center" as const,
           }}
         />
       </div>
 
       {suggestions.length > 0 && (
-        <div style={{ marginTop: 10, border: "1px solid #eee", borderRadius: 12 }}>
+        <div style={{
+          marginTop: 6,
+          border: "1px solid var(--border)",
+          borderRadius: "var(--radius-md)",
+          backgroundColor: "var(--surface)",
+          boxShadow: "var(--shadow-lg)",
+          overflow: "hidden",
+          animation: "fadeInUp 0.15s ease-out",
+        }}>
           {suggestions.map((s) => (
-            <div key={s.id} style={{ borderBottom: "1px solid #f2f2f2" }}>
+            <div key={s.id} style={{ borderBottom: "1px solid var(--border-light)" }}>
               <button
                 onClick={() => {
                   if (s.servingSizes && s.servingSizes.length > 0) {
@@ -319,22 +349,26 @@ export default function Home() {
                   display: "block",
                   width: "100%",
                   textAlign: "left",
-                  padding: 12,
+                  padding: "10px 14px",
                   border: "none",
-                  background: selectedSuggestion?.id === s.id ? "#f8f8f8" : "white",
+                  background: selectedSuggestion?.id === s.id
+                    ? "var(--surface-hover)"
+                    : "var(--surface)",
                   cursor: "pointer",
-                  color: "#333",
+                  color: "var(--text-primary)",
+                  transition: "background-color 0.1s ease",
+                  fontSize: 14,
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <div>{s.name}</div>
-                    <div style={{ fontSize: 12, opacity: 0.7 }}>
+                    <div style={{ fontWeight: 500 }}>{s.name}</div>
+                    <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>
                       {Math.round(Number(s.kcal))} kcal per 100g
                     </div>
                   </div>
                   {s.servingSizes && s.servingSizes.length > 0 && (
-                    <div style={{ fontSize: 12, color: "#666" }}>
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 500 }}>
                       {s.servingSizes.length} serving{s.servingSizes.length !== 1 ? 's' : ''} ▼
                     </div>
                   )}
@@ -342,9 +376,20 @@ export default function Home() {
               </button>
 
               {selectedSuggestion?.id === s.id && s.servingSizes && (
-                <div style={{ padding: "8px 12px", background: "#f9f9f9" }}>
-                  <div style={{ fontSize: 12, color: "#666", marginBottom: 8 }}>
-                    Select a serving size:
+                <div style={{
+                  padding: "8px 14px 10px",
+                  background: "var(--surface-secondary)",
+                  borderTop: "1px solid var(--border-light)",
+                }}>
+                  <div style={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color: "var(--text-tertiary)",
+                    marginBottom: 8,
+                    textTransform: "uppercase" as const,
+                    letterSpacing: "0.04em",
+                  }}>
+                    Select a serving size
                   </div>
                   {s.servingSizes.map((serving) => (
                     <button
@@ -354,21 +399,22 @@ export default function Home() {
                         display: "block",
                         width: "100%",
                         textAlign: "left",
-                        padding: "6px 8px",
+                        padding: "8px 10px",
                         marginBottom: 4,
-                        border: "1px solid #ddd",
-                        borderRadius: 6,
-                        background: "white",
+                        border: "1px solid var(--border-light)",
+                        borderRadius: "var(--radius-sm)",
+                        background: "var(--surface)",
                         cursor: "pointer",
                         fontSize: 13,
-                        color: "#333",
+                        color: "var(--text-primary)",
+                        transition: "background-color 0.1s ease, border-color 0.1s ease",
                       }}
                     >
-                      <div style={{ fontWeight: serving.is_default ? "bold" : "normal" }}>
+                      <div style={{ fontWeight: serving.is_default ? 600 : 400 }}>
                         {serving.name} ({Number(serving.grams)}g)
                         {serving.is_default && " ⭐"}
                       </div>
-                      <div style={{ fontSize: 11, opacity: 0.7 }}>
+                      <div style={{ fontSize: 11, color: "var(--text-tertiary)", marginTop: 1 }}>
                         ~{Math.round(Number(s.kcal) * Number(serving.grams) / 100)} kcal
                       </div>
                     </button>
@@ -380,11 +426,24 @@ export default function Home() {
         </div>
       )}
 
-      <div style={{ marginTop: 14, minHeight: 28, color: "#333" }}>{message}</div>
+      <div style={{
+        marginTop: 16,
+        minHeight: 24,
+        fontSize: 13,
+        color: "var(--text-secondary)",
+        fontWeight: 500,
+        transition: "opacity 0.2s ease",
+        opacity: message ? 1 : 0,
+      }}>{message}</div>
 
       {/* Pending estimation queue */}
       {pendingQueue.length > 0 && (
-        <div style={{ marginTop: 16 }}>
+        <div style={{
+          marginTop: 12,
+          display: "flex",
+          flexDirection: "column" as const,
+          gap: 8,
+        }}>
           {pendingQueue.map((item) => (
             <div
               key={item.id}
@@ -392,25 +451,29 @@ export default function Home() {
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                padding: "8px 12px",
-                marginBottom: 6,
-                borderRadius: 8,
-                fontSize: 14,
-                color: "#333",
-                background:
-                  item.status === "ready"
-                    ? "#f0fdf0"
-                    : item.status === "error"
-                    ? "#fef2f2"
-                    : "#f8f8f8",
+                padding: "10px 14px",
+                borderRadius: "var(--radius-md)",
+                fontSize: 13,
+                color: item.status === "ready"
+                  ? "var(--success-text)"
+                  : item.status === "error"
+                  ? "var(--error-text)"
+                  : "var(--text-primary)",
+                background: item.status === "ready"
+                  ? "var(--success-bg)"
+                  : item.status === "error"
+                  ? "var(--error-bg)"
+                  : "var(--surface)",
                 border: `1px solid ${
                   item.status === "ready"
-                    ? "#bbf7d0"
+                    ? "var(--success-border)"
                     : item.status === "error"
-                    ? "#fecaca"
-                    : "#e5e5e5"
+                    ? "var(--error-border)"
+                    : "var(--border)"
                 }`,
+                boxShadow: "var(--shadow-md)",
                 transition: "all 0.3s ease",
+                animation: "fadeInUp 0.2s ease-out",
               }}
             >
               {item.status === "pending" && (
@@ -419,17 +482,18 @@ export default function Home() {
                     display: "inline-block",
                     width: 14,
                     height: 14,
-                    border: "2px solid #ddd",
-                    borderTopColor: "#666",
+                    border: "2px solid var(--border)",
+                    borderTopColor: "var(--text-secondary)",
                     borderRadius: "50%",
                     animation: "spin 0.8s linear infinite",
+                    flexShrink: 0,
                   }}
                 />
               )}
               {item.status === "ready" && <span>✓</span>}
               {item.status === "error" && <span>✗</span>}
-              <span style={{ flex: 1 }}>{item.rawText}</span>
-              <span style={{ opacity: 0.6 }}>
+              <span style={{ flex: 1, fontWeight: 500 }}>{item.rawText}</span>
+              <span style={{ fontSize: 12, color: "var(--text-tertiary)", flexShrink: 0 }}>
                 {item.status === "pending" && "estimating…"}
                 {item.status === "ready" &&
                   `${item.kcal} kcal — ${item.name ?? ""}`}
@@ -441,55 +505,181 @@ export default function Home() {
         </div>
       )}
 
+      {/* Empty state */}
+      {dailyLogs.length === 0 && pendingQueue.length === 0 && (
+        <div style={{
+          marginTop: 64,
+          textAlign: "center",
+          color: "var(--text-tertiary)",
+          fontSize: 14,
+          lineHeight: "22px",
+        }}>
+          <div style={{ fontWeight: 500 }}>No food logged today</div>
+          <div style={{ marginTop: 4, fontSize: 13 }}>
+            Type what you ate above to get started
+          </div>
+        </div>
+      )}
+
       {/* Daily macros summary table */}
       {dailyLogs.length > 0 && (
-        <div style={{ marginTop: 32 }}>
-          <h2 style={{ fontSize: 20, marginBottom: 12, color: "#333" }}>Today</h2>
+        <div style={{
+          marginTop: 40,
+          background: "var(--surface)",
+          borderRadius: "var(--radius-lg)",
+          border: "1px solid var(--border)",
+          boxShadow: "var(--shadow-md)",
+          overflow: "hidden",
+        }}>
+          <div style={{
+            padding: "16px 20px 12px",
+            borderBottom: "1px solid var(--border-light)",
+          }}>
+            <h2 style={{
+              fontSize: 15,
+              fontWeight: 600,
+              color: "var(--text-primary)",
+              letterSpacing: "-0.01em",
+            }}>Today</h2>
+          </div>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
-                <tr style={{ borderBottom: "2px solid #ddd", textAlign: "left" }}>
-                  <th style={{ padding: "8px 4px", color: "#333" }}>Food</th>
-                  <th style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>Kcal</th>
-                  <th style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>Protein</th>
-                  <th style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>Carbs</th>
-                  <th style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>Fat</th>
+                <tr style={{ textAlign: "left", borderBottom: "1px solid var(--border)" }}>
+                  <th style={{
+                    padding: "10px 20px",
+                    color: "var(--text-secondary)",
+                    fontWeight: 500,
+                    fontSize: 12,
+                    textTransform: "uppercase" as const,
+                    letterSpacing: "0.04em",
+                  }}>Food</th>
+                  <th style={{
+                    padding: "10px 20px",
+                    color: "var(--text-secondary)",
+                    fontWeight: 500,
+                    fontSize: 12,
+                    textTransform: "uppercase" as const,
+                    letterSpacing: "0.04em",
+                    textAlign: "right",
+                  }}>Kcal</th>
+                  <th style={{
+                    padding: "10px 20px",
+                    color: "var(--text-secondary)",
+                    fontWeight: 500,
+                    fontSize: 12,
+                    textTransform: "uppercase" as const,
+                    letterSpacing: "0.04em",
+                    textAlign: "right",
+                  }}>Protein</th>
+                  <th style={{
+                    padding: "10px 20px",
+                    color: "var(--text-secondary)",
+                    fontWeight: 500,
+                    fontSize: 12,
+                    textTransform: "uppercase" as const,
+                    letterSpacing: "0.04em",
+                    textAlign: "right",
+                  }}>Carbs</th>
+                  <th style={{
+                    padding: "10px 20px",
+                    color: "var(--text-secondary)",
+                    fontWeight: 500,
+                    fontSize: 12,
+                    textTransform: "uppercase" as const,
+                    letterSpacing: "0.04em",
+                    textAlign: "right",
+                  }}>Fat</th>
                 </tr>
               </thead>
               <tbody>
-                {dailyLogs.map((log) => (
-                  <tr key={log.id} style={{ borderBottom: "1px solid #f2f2f2" }}>
-                    <td style={{ padding: "8px 4px", color: "#333" }}>
+                {dailyLogs.map((log, index) => (
+                  <tr key={log.id} style={{
+                    borderBottom: "1px solid var(--table-border)",
+                    background: index % 2 === 1 ? "var(--table-row-alt)" : "transparent",
+                  }}>
+                    <td style={{ padding: "10px 20px", color: "var(--text-primary)" }}>
                       {log.foodItem?.name ?? log.raw_text}
                     </td>
-                    <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                    <td style={{
+                      padding: "10px 20px",
+                      textAlign: "right",
+                      color: "var(--text-secondary)",
+                      fontVariantNumeric: "tabular-nums",
+                    }}>
                       {log.kcal ? Math.round(Number(log.kcal)) : "—"}
                     </td>
-                    <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                    <td style={{
+                      padding: "10px 20px",
+                      textAlign: "right",
+                      color: "var(--text-secondary)",
+                      fontVariantNumeric: "tabular-nums",
+                    }}>
                       {log.protein_g ? `${Math.round(Number(log.protein_g))}g` : "—"}
                     </td>
-                    <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                    <td style={{
+                      padding: "10px 20px",
+                      textAlign: "right",
+                      color: "var(--text-secondary)",
+                      fontVariantNumeric: "tabular-nums",
+                    }}>
                       {log.carbs_g ? `${Math.round(Number(log.carbs_g))}g` : "—"}
                     </td>
-                    <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                    <td style={{
+                      padding: "10px 20px",
+                      textAlign: "right",
+                      color: "var(--text-secondary)",
+                      fontVariantNumeric: "tabular-nums",
+                    }}>
                       {log.fat_g ? `${Math.round(Number(log.fat_g))}g` : "—"}
                     </td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr style={{ borderTop: "2px solid #ddd", fontWeight: "bold" }}>
-                  <td style={{ padding: "8px 4px", color: "#333" }}>Total</td>
-                  <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                <tr style={{
+                  borderTop: "1px solid var(--border)",
+                  background: "var(--table-footer-bg)",
+                }}>
+                  <td style={{
+                    padding: "12px 20px",
+                    color: "var(--text-primary)",
+                    fontWeight: 600,
+                  }}>Total</td>
+                  <td style={{
+                    padding: "12px 20px",
+                    textAlign: "right",
+                    color: "var(--text-primary)",
+                    fontWeight: 600,
+                    fontVariantNumeric: "tabular-nums",
+                  }}>
                     {Math.round(totals.kcal)}
                   </td>
-                  <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                  <td style={{
+                    padding: "12px 20px",
+                    textAlign: "right",
+                    color: "var(--text-primary)",
+                    fontWeight: 600,
+                    fontVariantNumeric: "tabular-nums",
+                  }}>
                     {Math.round(totals.protein)}g
                   </td>
-                  <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                  <td style={{
+                    padding: "12px 20px",
+                    textAlign: "right",
+                    color: "var(--text-primary)",
+                    fontWeight: 600,
+                    fontVariantNumeric: "tabular-nums",
+                  }}>
                     {Math.round(totals.carbs)}g
                   </td>
-                  <td style={{ padding: "8px 4px", textAlign: "right", color: "#333" }}>
+                  <td style={{
+                    padding: "12px 20px",
+                    textAlign: "right",
+                    color: "var(--text-primary)",
+                    fontWeight: 600,
+                    fontVariantNumeric: "tabular-nums",
+                  }}>
                     {Math.round(totals.fat)}g
                   </td>
                 </tr>
@@ -498,8 +688,6 @@ export default function Home() {
           </div>
         </div>
       )}
-
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </main>
   );
 }

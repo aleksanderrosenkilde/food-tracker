@@ -1,12 +1,90 @@
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Surfaces */
+  --background: #f8f9fa;
+  --foreground: #111111;
+  --surface: #ffffff;
+  --surface-hover: #f1f3f5;
+  --surface-secondary: #f8f9fa;
+
+  /* Borders */
+  --border: #e2e5e9;
+  --border-light: #eef0f2;
+  --border-focus: #3b82f6;
+
+  /* Text */
+  --text-primary: #111111;
+  --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
+
+  /* Accent */
+  --accent: #3b82f6;
+  --accent-light: #eff6ff;
+
+  /* Status */
+  --success-bg: #f0fdf4;
+  --success-border: #bbf7d0;
+  --success-text: #16a34a;
+  --error-bg: #fef2f2;
+  --error-border: #fecaca;
+  --error-text: #dc2626;
+
+  /* Table */
+  --table-header-bg: #f8f9fa;
+  --table-row-alt: #fafbfc;
+  --table-border: #eef0f2;
+  --table-footer-bg: #f1f3f5;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-focus: 0 0 0 3px rgba(59, 130, 246, 0.15);
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --surface: #161616;
+    --surface-hover: #1e1e1e;
+    --surface-secondary: #111111;
+
+    --border: #2a2a2a;
+    --border-light: #1e1e1e;
+    --border-focus: #3b82f6;
+
+    --text-primary: #ededed;
+    --text-secondary: #a1a1a1;
+    --text-tertiary: #6b6b6b;
+
+    --accent: #60a5fa;
+    --accent-light: #1e293b;
+
+    --success-bg: #052e16;
+    --success-border: #166534;
+    --success-text: #4ade80;
+    --error-bg: #2c0b0b;
+    --error-border: #7f1d1d;
+    --error-text: #f87171;
+
+    --table-header-bg: #111111;
+    --table-row-alt: #131313;
+    --table-border: #1e1e1e;
+    --table-footer-bg: #161616;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2);
+    --shadow-focus: 0 0 0 3px rgba(96, 165, 250, 0.2);
+  }
+
+  html {
+    color-scheme: dark;
   }
 }
 
@@ -19,7 +97,7 @@ body {
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -35,8 +113,25 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
+/* Focus styles */
+input:focus {
+  outline: none;
+  border-color: var(--border-focus) !important;
+  box-shadow: var(--shadow-focus) !important;
+}
+
+/* Keyframes */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
