@@ -23,13 +23,25 @@ type ServingSize = {
   is_default: boolean;
 };
 
+type ExternalFoodData = {
+  externalId: string;
+  kcal_100g: number;
+  protein_100g: number;
+  carbs_100g: number;
+  fat_100g: number;
+  fiber_100g?: number;
+  source: string;
+};
+
 type Suggestion = {
   id: string;
   name: string;
-  kcal: string;
-  protein_g: string;
-  carbs_g: string;
-  fat_g: string;
+  kcal: string | number;
+  protein_g: string | number;
+  carbs_g: string | number;
+  fat_g: string | number;
+  source?: "local" | "usda";
+  externalData?: ExternalFoodData;
   servingSizes?: ServingSize[];
 };
 
@@ -161,19 +173,19 @@ export default function Home() {
   // -------------------------------------------------------
   // Submit food (supports comma-separated multi-food)
   // -------------------------------------------------------
-  async function submit(customText?: string, servingSize?: ServingSize) {
+  async function submit(customText?: string, servingSize?: ServingSize, externalFood?: ExternalFoodData & { name: string }) {
     const payloadText = (customText ?? text).trim();
     if (!payloadText) return;
 
-    const items: Array<{ text: string; servingSize?: ServingSize }> = [];
+    const items: Array<{ text: string; servingSize?: ServingSize; externalFood?: ExternalFoodData & { name: string } }> = [];
 
-    if (!customText && !servingSize && payloadText.includes(",")) {
+    if (!customText && !servingSize && !externalFood && payloadText.includes(",")) {
       const parts = payloadText.split(",").map((s) => s.trim()).filter(Boolean);
       for (const part of parts) {
         items.push({ text: part });
       }
     } else {
-      items.push({ text: payloadText, servingSize });
+      items.push({ text: payloadText, servingSize, externalFood });
     }
 
     setBusy(true);
@@ -199,6 +211,7 @@ export default function Home() {
           body: JSON.stringify({
             text: finalText,
             amount: item.servingSize ? amount : undefined,
+            externalFood: item.externalFood,
           }),
         });
 
@@ -339,7 +352,10 @@ export default function Home() {
             <div key={s.id} style={{ borderBottom: "1px solid var(--border-light)" }}>
               <button
                 onClick={() => {
-                  if (s.servingSizes && s.servingSizes.length > 0) {
+                  if (s.externalData) {
+                    // USDA result: pass nutrition data directly, no AI needed
+                    submit(s.name, undefined, { ...s.externalData, name: s.name });
+                  } else if (s.servingSizes && s.servingSizes.length > 0) {
                     setSelectedSuggestion(selectedSuggestion?.id === s.id ? null : s);
                   } else {
                     submit(s.name);
@@ -361,14 +377,30 @@ export default function Home() {
                 }}
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div>
-                    <div style={{ fontWeight: 500 }}>{s.name}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" as const }}>{s.name}</span>
+                      {s.source === "usda" && (
+                        <span style={{
+                          fontSize: 9,
+                          fontWeight: 600,
+                          letterSpacing: "0.06em",
+                          color: "var(--text-tertiary)",
+                          background: "var(--surface-secondary)",
+                          border: "1px solid var(--border-light)",
+                          borderRadius: 3,
+                          padding: "1px 4px",
+                          flexShrink: 0,
+                          textTransform: "uppercase" as const,
+                        }}>USDA</span>
+                      )}
+                    </div>
                     <div style={{ fontSize: 12, color: "var(--text-tertiary)", marginTop: 2 }}>
                       {Math.round(Number(s.kcal))} kcal per 100g
                     </div>
                   </div>
-                  {s.servingSizes && s.servingSizes.length > 0 && (
-                    <div style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 500 }}>
+                  {!s.externalData && s.servingSizes && s.servingSizes.length > 0 && (
+                    <div style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 500, flexShrink: 0 }}>
                       {s.servingSizes.length} serving{s.servingSizes.length !== 1 ? 's' : ''} ▼
                     </div>
                   )}

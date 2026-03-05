@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { parseFoodInput } from "@/lib/foodParse";
 import { findBestFoodItem } from "@/lib/foodFind";
 import { findMatchingServingSize, calculateNutrition } from "@/lib/servingSizes";
+import { normalizeFoodText } from "@/lib/foodMatch";
 
 function inferMeal(date: Date) {
   const h = date.getHours();
@@ -29,6 +30,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing text" }, { status: 400 });
     }
 
+    // Optional: pre-fetched external nutrition data (from USDA suggestion click)
+    const externalFood = body.externalFood as {
+      externalId: string;
+      name: string;
+      kcal_100g: number;
+      protein_100g: number;
+      carbs_100g: number;
+      fat_100g: number;
+      fiber_100g?: number;
+      source: string;
+    } | undefined;
+
     // Parse units like "200g" etc. (amount defaults to 1)
     const parsed = parseFoodInput(rawText);
 
@@ -43,6 +56,56 @@ export async function POST(req: Request) {
       Number.isFinite(uiAmount) && uiAmount > 0 ? uiAmount : parsed.amount ?? 1;
 
     const meal = inferMeal(new Date());
+
+    // ✅ CASE 0: External food data provided (user selected from USDA) → log instantly
+    if (externalFood) {
+      const normalized = normalizeFoodText(externalFood.name);
+
+      // Upsert: reuse if already cached, otherwise create
+      let item = await prisma.foodItem.findUnique({ where: { normalized } });
+      if (!item) {
+        item = await prisma.foodItem.create({
+          data: {
+            name: externalFood.name,
+            normalized,
+            kcal: externalFood.kcal_100g,
+            protein_g: externalFood.protein_100g,
+            carbs_g: externalFood.carbs_100g,
+            fat_g: externalFood.fat_100g,
+            fiber_g: externalFood.fiber_100g ?? null,
+            source: externalFood.source,
+          },
+        });
+      }
+
+      const multiplier = parsed.grams ? parsed.grams / 100 : amount;
+      const servingUnit = parsed.grams ? `${parsed.grams}g` : "serving";
+
+      const log = await prisma.foodLog.create({
+        data: {
+          raw_text: rawText,
+          amount,
+          serving_unit: servingUnit,
+          meal,
+          status: "ready",
+          food_item_id: item.id,
+          kcal: Number(item.kcal) * multiplier,
+          protein_g: Number(item.protein_g) * multiplier,
+          carbs_g: Number(item.carbs_g) * multiplier,
+          fat_g: Number(item.fat_g) * multiplier,
+          fiber_g: item.fiber_g ? Number(item.fiber_g) * multiplier : null,
+        } as any,
+        include: { foodItem: true },
+      });
+
+      return NextResponse.json({
+        status: "ready",
+        log,
+        matchedBy: "usda",
+        parsed,
+        servingUsed: servingUnit,
+      });
+    }
 
     // 1) Try to match an existing cached FoodItem (exact/fuzzy)
     const match = await findBestFoodItem(parsed.normalized);
