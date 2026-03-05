@@ -12,6 +12,7 @@ import { parseFoodInput } from "@/lib/foodParse";
 import { findBestFoodItem } from "@/lib/foodFind";
 import { findMatchingServingSize, calculateNutrition } from "@/lib/servingSizes";
 import { normalizeFoodText } from "@/lib/foodMatch";
+import { resolveGrams } from "@/lib/portionToGrams";
 
 function inferMeal(date: Date) {
   const h = date.getHours();
@@ -78,14 +79,22 @@ export async function POST(req: Request) {
         });
       }
 
-      const multiplier = parsed.grams ? parsed.grams / 100 : amount;
-      const servingUnit = parsed.grams ? `${parsed.grams}g` : "serving";
+      // Resolve grams: explicit weight > volume+density > fallback to serving count
+      const totalGrams =
+        parsed.grams ??
+        resolveGrams(parsed, externalFood.name) ??
+        null;
+
+      const multiplier   = totalGrams != null ? totalGrams / 100 : amount;
+      const servingUnit  = totalGrams != null ? `${Math.round(totalGrams)}g` : "serving";
+      const servingGrams = totalGrams != null ? totalGrams : undefined;
 
       const log = await prisma.foodLog.create({
         data: {
           raw_text: rawText,
           amount,
           serving_unit: servingUnit,
+          serving_grams: servingGrams,
           meal,
           status: "ready",
           food_item_id: item.id,
@@ -128,45 +137,45 @@ export async function POST(req: Request) {
             servingMatch.servingSize,
             servingMatch.multiplier
           );
-          servingUnit = servingMatch.servingSize.name;
+          servingUnit  = servingMatch.servingSize.name;
           servingGrams = nutrition.serving_grams;
         } else {
-          // Fall back to weight-based calculation when serving size exists but doesn't match
-          let multiplier = amount; // default multiplier
+          // No matching serving size: resolve grams via weight/volume/density
+          const totalGrams =
+            parsed.grams ??
+            resolveGrams(parsed, item.name) ??
+            null;
 
-          // If user specified grams, calculate based on per-100g nutrition
-          if (parsed.grams) {
-            multiplier = parsed.grams / 100; // nutrition is stored per 100g
-            servingGrams = parsed.grams;
-            servingUnit = `${parsed.grams}g`;
-          }
+          const multiplier = totalGrams != null ? totalGrams / 100 : amount;
+          servingGrams = totalGrams ?? undefined;
+          servingUnit  = totalGrams != null ? `${Math.round(totalGrams)}g` : "serving";
 
           nutrition = {
-            kcal: Number(item.kcal) * multiplier,
-            protein_g: Number(item.protein_g) * multiplier,
-            carbs_g: Number(item.carbs_g) * multiplier,
-            fat_g: Number(item.fat_g) * multiplier,
-            fiber_g: item.fiber_g ? Number(item.fiber_g) * multiplier : undefined,
+            kcal:          Number(item.kcal)      * multiplier,
+            protein_g:     Number(item.protein_g) * multiplier,
+            carbs_g:       Number(item.carbs_g)   * multiplier,
+            fat_g:         Number(item.fat_g)     * multiplier,
+            fiber_g:       item.fiber_g ? Number(item.fiber_g) * multiplier : undefined,
             serving_grams: servingGrams,
           };
         }
       } else {
-        // Fall back to weight-based calculation if no serving sizes
-        let multiplier = amount; // default multiplier
+        // No serving sizes in DB: resolve grams via weight/volume/density
+        const totalGrams =
+          parsed.grams ??
+          resolveGrams(parsed, item.name) ??
+          null;
 
-        // If user specified grams, calculate based on per-100g nutrition
-        if (parsed.grams) {
-          multiplier = parsed.grams / 100; // nutrition is stored per 100g
-          servingGrams = parsed.grams;
-          servingUnit = `${parsed.grams}g`;
-        }
+        const multiplier = totalGrams != null ? totalGrams / 100 : amount;
+        servingGrams = totalGrams ?? undefined;
+        servingUnit  = totalGrams != null ? `${Math.round(totalGrams)}g` : "serving";
 
         nutrition = {
-          kcal: Number(item.kcal) * multiplier,
-          protein_g: Number(item.protein_g) * multiplier,
-          carbs_g: Number(item.carbs_g) * multiplier,
-          fat_g: Number(item.fat_g) * multiplier,
-          fiber_g: item.fiber_g ? Number(item.fiber_g) * multiplier : undefined,
+          kcal:          Number(item.kcal)      * multiplier,
+          protein_g:     Number(item.protein_g) * multiplier,
+          carbs_g:       Number(item.carbs_g)   * multiplier,
+          fat_g:         Number(item.fat_g)     * multiplier,
+          fiber_g:       item.fiber_g ? Number(item.fiber_g) * multiplier : undefined,
           serving_grams: servingGrams,
         };
       }
