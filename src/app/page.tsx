@@ -79,6 +79,7 @@ export default function Home() {
   const [pendingQueue, setPendingQueue] = useState<PendingItem[]>([]);
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
   const [weeklyData, setWeeklyData] = useState<WeekDay[]>([]);
+  const [exerciseKcal, setExerciseKcal] = useState(0);
 
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -104,10 +105,20 @@ export default function Home() {
     } catch {}
   }, []);
 
+  const fetchExerciseKcal = useCallback(async () => {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const res = await fetch(`/api/exercise/today?tz=${encodeURIComponent(tz)}`);
+      const data = await res.json();
+      setExerciseKcal(data.kcalBurned || 0);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     fetchDailyLogs();
     fetchWeeklyData();
-  }, [fetchDailyLogs, fetchWeeklyData]);
+    fetchExerciseKcal();
+  }, [fetchDailyLogs, fetchWeeklyData, fetchExerciseKcal]);
 
   // -------------------------------------------------------
   // Suggestions dropdown
@@ -289,13 +300,16 @@ export default function Home() {
   );
 
   // -------------------------------------------------------
-  // Progress bar derived values
+  // Progress bar derived values (exercise expands the goal)
   // -------------------------------------------------------
-  const progressPct = Math.min(totals.kcal / DAILY_GOAL, 1) * 100;
-  const isOverGoal = totals.kcal > DAILY_GOAL;
+  const effectiveGoal = DAILY_GOAL + exerciseKcal;
+  const progressPct = Math.min(totals.kcal / effectiveGoal, 1) * 100;
+  // Where the base-goal tick sits inside the bar (only meaningful when exerciseKcal > 0)
+  const baseGoalPct = exerciseKcal > 0 ? (DAILY_GOAL / effectiveGoal) * 100 : 100;
+  const isOverGoal = totals.kcal > effectiveGoal;
   const progressColor = isOverGoal
     ? "#dc2626"
-    : totals.kcal / DAILY_GOAL > 0.8
+    : totals.kcal / effectiveGoal > 0.8
     ? "#d97706"
     : "#16a34a";
 
@@ -631,11 +645,12 @@ export default function Home() {
 
           {/* ── Daily calorie progress bar ── */}
           <div style={{ padding: "14px 20px 16px", borderBottom: "1px solid var(--border-light)" }}>
+            {/* Header row: label + consumed / goal */}
             <div style={{
               display: "flex",
               justifyContent: "space-between",
               alignItems: "baseline",
-              marginBottom: 8,
+              marginBottom: exerciseKcal > 0 ? 4 : 8,
             }}>
               <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>
                 Calories
@@ -647,26 +662,75 @@ export default function Home() {
                 fontVariantNumeric: "tabular-nums",
               }}>
                 {Math.round(totals.kcal).toLocaleString()}
-                <span style={{ fontWeight: 400, color: "var(--text-tertiary)" }}> / {DAILY_GOAL.toLocaleString()} kcal</span>
+                <span style={{ fontWeight: 400, color: "var(--text-tertiary)" }}>
+                  {" "}/ {effectiveGoal.toLocaleString()} kcal
+                </span>
               </span>
             </div>
-            <div style={{
-              height: 7,
-              borderRadius: 99,
-              background: "var(--border-light)",
-              overflow: "hidden",
-            }}>
+
+            {/* Exercise breakdown line (only when exerciseKcal > 0) */}
+            {exerciseKcal > 0 && (
               <div style={{
-                height: "100%",
-                width: `${progressPct}%`,
+                fontSize: 11,
+                color: "var(--text-tertiary)",
+                marginBottom: 8,
+                display: "flex",
+                gap: 6,
+                alignItems: "center",
+                flexWrap: "wrap" as const,
+              }}>
+                <span>{DAILY_GOAL.toLocaleString()} base</span>
+                <span style={{ color: "var(--text-tertiary)" }}>·</span>
+                <span style={{ color: "#d97706", fontWeight: 500 }}>
+                  +{exerciseKcal.toLocaleString()} 🔥 exercise
+                </span>
+                <span style={{ color: "var(--text-tertiary)" }}>·</span>
+                <span style={{ fontWeight: 500, color: "var(--text-secondary)" }}>
+                  = {effectiveGoal.toLocaleString()} kcal goal
+                </span>
+              </div>
+            )}
+
+            {/* Progress bar track — two-zone when exercise is present */}
+            <div style={{ position: "relative" }}>
+              <div style={{
+                height: 7,
                 borderRadius: 99,
-                background: progressColor,
-                transition: "width 0.6s cubic-bezier(0.4,0,0.2,1), background-color 0.3s ease",
-              }} />
+                // When exercise calories exist, split the track: grey base + warm exercise zone
+                background: exerciseKcal > 0
+                  ? `linear-gradient(to right, var(--border-light) 0%, var(--border-light) ${baseGoalPct}%, #fef3c7 ${baseGoalPct}%, #fef3c7 100%)`
+                  : "var(--border-light)",
+                overflow: "hidden",
+              }}>
+                <div style={{
+                  height: "100%",
+                  width: `${progressPct}%`,
+                  borderRadius: 99,
+                  background: progressColor,
+                  transition: "width 0.6s cubic-bezier(0.4,0,0.2,1), background-color 0.3s ease",
+                }} />
+              </div>
+
+              {/* White tick at the base-goal boundary */}
+              {exerciseKcal > 0 && (
+                <div style={{
+                  position: "absolute",
+                  top: 0,
+                  left: `${baseGoalPct}%`,
+                  transform: "translateX(-50%)",
+                  width: 2,
+                  height: 7,
+                  background: "var(--surface)",
+                  borderRadius: 1,
+                  pointerEvents: "none",
+                }} />
+              )}
             </div>
+
+            {/* Over-goal warning */}
             {isOverGoal && (
               <div style={{ fontSize: 11, color: "#dc2626", marginTop: 5, textAlign: "right" as const }}>
-                +{Math.round(totals.kcal - DAILY_GOAL)} kcal over goal
+                +{Math.round(totals.kcal - effectiveGoal)} kcal over goal
               </div>
             )}
           </div>
@@ -864,7 +928,7 @@ export default function Home() {
                 fontWeight={600}
                 letterSpacing="0.04em"
               >
-                {DAILY_GOAL.toLocaleString()} KCAL
+                {DAILY_GOAL.toLocaleString()} BASE GOAL
               </text>
 
               {/* Bars */}
