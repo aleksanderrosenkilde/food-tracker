@@ -65,6 +65,10 @@ type DailyLog = {
   foodItem?: { name: string } | null;
 };
 
+type WeekDay = { date: string; kcal: number };
+
+const DAILY_GOAL = 1500;
+
 export default function Home() {
   const [text, setText] = useState("");
   const [amount, setAmount] = useState(1);
@@ -74,12 +78,13 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [pendingQueue, setPendingQueue] = useState<PendingItem[]>([]);
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
+  const [weeklyData, setWeeklyData] = useState<WeekDay[]>([]);
 
   const abortRef = useRef<AbortController | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // -------------------------------------------------------
-  // Fetch today's logs
+  // Fetch today's logs + weekly summary
   // -------------------------------------------------------
   const fetchDailyLogs = useCallback(async () => {
     try {
@@ -90,9 +95,19 @@ export default function Home() {
     } catch {}
   }, []);
 
+  const fetchWeeklyData = useCallback(async () => {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const res = await fetch(`/api/logs/week?tz=${encodeURIComponent(tz)}`);
+      const data = await res.json();
+      setWeeklyData(data.days || []);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     fetchDailyLogs();
-  }, [fetchDailyLogs]);
+    fetchWeeklyData();
+  }, [fetchDailyLogs, fetchWeeklyData]);
 
   // -------------------------------------------------------
   // Suggestions dropdown
@@ -144,6 +159,7 @@ export default function Home() {
           )
         );
         fetchDailyLogs();
+        fetchWeeklyData();
         setTimeout(() => {
           setPendingQueue((q) => q.filter((item) => item.id !== id));
         }, 3000);
@@ -230,6 +246,7 @@ export default function Home() {
             );
           }
           fetchDailyLogs();
+          fetchWeeklyData();
         }
 
         if (data.status === "pending") {
@@ -270,6 +287,43 @@ export default function Home() {
     }),
     { kcal: 0, protein: 0, carbs: 0, fat: 0 }
   );
+
+  // -------------------------------------------------------
+  // Progress bar derived values
+  // -------------------------------------------------------
+  const progressPct = Math.min(totals.kcal / DAILY_GOAL, 1) * 100;
+  const isOverGoal = totals.kcal > DAILY_GOAL;
+  const progressColor = isOverGoal
+    ? "#dc2626"
+    : totals.kcal / DAILY_GOAL > 0.8
+    ? "#d97706"
+    : "#16a34a";
+
+  // -------------------------------------------------------
+  // 7-day chart helpers
+  // -------------------------------------------------------
+  const chartViewW = 480;
+  const chartViewH = 160;
+  const padT = 22; // space for kcal labels above bars
+  const padB = 26; // space for day labels below bars
+  const plotH = chartViewH - padT - padB;
+  const slotW = chartViewW / 7;
+  const barW = slotW * 0.52;
+  const maxKcal = Math.max(
+    DAILY_GOAL * 1.2,
+    ...weeklyData.map((d) => d.kcal),
+    1
+  );
+  const yFor = (kcal: number) =>
+    padT + plotH - (kcal / maxKcal) * plotH;
+  const goalY = yFor(DAILY_GOAL);
+  const todayDateStr = weeklyData[weeklyData.length - 1]?.date ?? "";
+
+  function dayLabel(dateStr: string, idx: number) {
+    if (idx === 6) return "Today";
+    const d = new Date(dateStr + "T12:00:00");
+    return d.toLocaleDateString("en-US", { weekday: "short" });
+  }
 
   return (
     <main style={{
@@ -574,6 +628,49 @@ export default function Home() {
               letterSpacing: "-0.01em",
             }}>Today</h2>
           </div>
+
+          {/* ── Daily calorie progress bar ── */}
+          <div style={{ padding: "14px 20px 16px", borderBottom: "1px solid var(--border-light)" }}>
+            <div style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "baseline",
+              marginBottom: 8,
+            }}>
+              <span style={{ fontSize: 12, fontWeight: 500, color: "var(--text-secondary)", textTransform: "uppercase" as const, letterSpacing: "0.04em" }}>
+                Calories
+              </span>
+              <span style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: isOverGoal ? "#dc2626" : "var(--text-primary)",
+                fontVariantNumeric: "tabular-nums",
+              }}>
+                {Math.round(totals.kcal).toLocaleString()}
+                <span style={{ fontWeight: 400, color: "var(--text-tertiary)" }}> / {DAILY_GOAL.toLocaleString()} kcal</span>
+              </span>
+            </div>
+            <div style={{
+              height: 7,
+              borderRadius: 99,
+              background: "var(--border-light)",
+              overflow: "hidden",
+            }}>
+              <div style={{
+                height: "100%",
+                width: `${progressPct}%`,
+                borderRadius: 99,
+                background: progressColor,
+                transition: "width 0.6s cubic-bezier(0.4,0,0.2,1), background-color 0.3s ease",
+              }} />
+            </div>
+            {isOverGoal && (
+              <div style={{ fontSize: 11, color: "#dc2626", marginTop: 5, textAlign: "right" as const }}>
+                +{Math.round(totals.kcal - DAILY_GOAL)} kcal over goal
+              </div>
+            )}
+          </div>
+
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
@@ -717,6 +814,126 @@ export default function Home() {
                 </tr>
               </tfoot>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── 7-day calorie bar chart ── */}
+      {weeklyData.length > 0 && (
+        <div style={{
+          marginTop: 20,
+          background: "var(--surface)",
+          borderRadius: "var(--radius-lg)",
+          border: "1px solid var(--border)",
+          boxShadow: "var(--shadow-md)",
+          overflow: "hidden",
+        }}>
+          <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid var(--border-light)" }}>
+            <h2 style={{
+              fontSize: 15,
+              fontWeight: 600,
+              color: "var(--text-primary)",
+              letterSpacing: "-0.01em",
+            }}>Last 7 days</h2>
+          </div>
+
+          <div style={{ padding: "16px 20px 8px" }}>
+            <svg
+              viewBox={`0 0 ${chartViewW} ${chartViewH}`}
+              width="100%"
+              style={{ display: "block", overflow: "visible" }}
+              aria-label="7-day calorie chart"
+            >
+              {/* Goal line */}
+              <line
+                x1={0}
+                y1={goalY}
+                x2={chartViewW}
+                y2={goalY}
+                stroke="#94a3b8"
+                strokeWidth={1}
+                strokeDasharray="5 4"
+              />
+              {/* Goal label */}
+              <text
+                x={chartViewW - 2}
+                y={goalY - 4}
+                textAnchor="end"
+                fontSize={9}
+                fill="#94a3b8"
+                fontWeight={600}
+                letterSpacing="0.04em"
+              >
+                {DAILY_GOAL.toLocaleString()} KCAL
+              </text>
+
+              {/* Bars */}
+              {weeklyData.map((day, i) => {
+                const isToday = day.date === todayDateStr;
+                const over = day.kcal > DAILY_GOAL;
+                const barH = day.kcal > 0 ? (day.kcal / maxKcal) * plotH : 0;
+                const x = i * slotW + (slotW - barW) / 2;
+                const y = padT + plotH - barH;
+                const barColor = over
+                  ? (isToday ? "#dc2626" : "#f87171")
+                  : (isToday ? "#16a34a" : "#4ade80");
+                const labelY = y - 5;
+
+                return (
+                  <g key={day.date}>
+                    {/* Bar */}
+                    {day.kcal > 0 && (
+                      <rect
+                        x={x}
+                        y={y}
+                        width={barW}
+                        height={barH}
+                        rx={3}
+                        fill={barColor}
+                        opacity={isToday ? 1 : 0.85}
+                      />
+                    )}
+                    {/* Empty day — faint baseline tick */}
+                    {day.kcal === 0 && (
+                      <rect
+                        x={x}
+                        y={padT + plotH - 2}
+                        width={barW}
+                        height={2}
+                        rx={1}
+                        fill="var(--border)"
+                      />
+                    )}
+                    {/* Kcal label above bar */}
+                    {day.kcal > 0 && (
+                      <text
+                        x={x + barW / 2}
+                        y={Math.min(labelY, padT + plotH - barH - 3)}
+                        textAnchor="middle"
+                        fontSize={9}
+                        fill={over ? "#dc2626" : "#15803d"}
+                        fontWeight={isToday ? 700 : 500}
+                      >
+                        {day.kcal >= 1000
+                          ? `${(day.kcal / 1000).toFixed(1)}k`
+                          : day.kcal}
+                      </text>
+                    )}
+                    {/* Day label */}
+                    <text
+                      x={i * slotW + slotW / 2}
+                      y={padT + plotH + 16}
+                      textAnchor="middle"
+                      fontSize={10}
+                      fill={isToday ? "var(--text-primary)" : "var(--text-tertiary)"}
+                      fontWeight={isToday ? 700 : 400}
+                    >
+                      {dayLabel(day.date, i)}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
           </div>
         </div>
       )}
